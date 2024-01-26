@@ -1,60 +1,38 @@
 import { Injectable } from '@nestjs/common';
-import puppeteer from 'puppeteer';
-import { resolve } from 'path';
 import { readFile } from 'fs/promises';
+import { create } from '@wppconnect-team/wppconnect';
 
-const CAMINHO_CLIENT_DATA = 'src/Clients/clients.txt'
-
+const CAMINHO_CLIENT_DATA = 'src/Clients/clients.txt';
+const sessionName = 'session';
 
 @Injectable()
 export class AppService {
   async sendMessage(): Promise<any> {
     try {
-      const clientsData = await readClientData();
-      var phone = clientsData.map((client) => client.telefone);
-      let lastMonth = new Date().getMonth() - 1;
-      if (lastMonth < 0) {
-        lastMonth = 12;
-      }
-      const message = `Olá <nome>, <empresa> gostaria de solicitar o extrato bancário do mês de ${lastMonth}. Obrigado!`;
+      const clientsFromTxt = await readClientData();
+      const options = {
+        headless: true,
+        customUserAgent:
+          'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36',
+        devtools: false,
+        useChrome: true,
+      };
+      const client = await create({ session: sessionName, ...options });
 
-      const browser = await puppeteer.launch({
-        headless: false,
-        args: [
-          '--start-maximized',
-        ],
-        defaultViewport: null,
-        executablePath: 'C://Program Files//Google//Chrome//Application//chrome.exe',
-      });
+      for (const clientData of clientsFromTxt) {
+        const { telefone, nome, empresa } = clientData;
+        const message = `Hello ${nome} from ${empresa}! This is a test message.`;
+        await client.sendText(`${telefone}@c.us`, message);
 
-      const page = await browser.newPage();
-
-      for (let index = 0; index < phone.length; index++) {
-        const currentMessage = message.replace('<nome>', clientsData[index].nome).replace('<empresa>', clientsData[index].empresa);
-        await page.goto(`https://web.whatsapp.com/send?phone=+${phone[index]}&text=${encodeURIComponent(currentMessage)}`, {
-          waitUntil: 'networkidle2', // Aguarda até que haja duas solicitações de rede ociosas por pelo menos 500 ms
-        });
-        await page.waitForResponse(response => response.url().includes('send?phone=+')); // Ajuste conforme necessário
-
-        // Aguarde até que o botão de envio esteja pronto
-        await page.waitForSelector("span[data-testid='send']", { timeout: 5000 });
-
-
-        console.log(`Conectado com sucesso! Enviando mensagem para ${phone[index]}`);
-
-        // Clique no botão de envio
-        await page.click("span[data-testid='send']");
-
-        // Aguarde até que o botão de envio esteja pronto novamente
-        await page.waitForSelector("span[data-testid='send']", { timeout: 5000 });
+        await delay(1000);
       }
 
+      await client.close();
     } catch (error) {
-
+      console.error(`Error: ${error.message}`);
     }
   }
 }
-
 
 async function readClientData() {
   try {
@@ -67,7 +45,7 @@ async function readClientData() {
     });
     return clientData;
   } catch (error) {
-    console.error(`Erro ao ler o arquivo: ${error.message}`);
+    console.error(`Error reading the file: ${error.message}`);
     return [];
   }
 }
